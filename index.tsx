@@ -11,6 +11,7 @@ import { Devs } from "@utils/constants";
 import { classes } from "@utils/misc";
 import definePlugin, { OptionType } from "@utils/types";
 import type { Channel, User } from "@vencord/discord-types";
+import { ChannelType } from "@vencord/discord-types/enums";
 import { findByPropsLazy, findComponentByCodeLazy, findStoreLazy } from "@webpack";
 import {
     ChannelStore,
@@ -188,60 +189,68 @@ function getChannelId(userId: string) {
 }
 
 function triggerFollow(userChannelId: string | null = getChannelId(settings.store.followUserId)) {
-    if (settings.store.followUserId) {
-        const myChanId = SelectedChannelStore.getVoiceChannelId();
-        if (userChannelId) {
-            // join when not already in the same channel
-            if (userChannelId !== myChanId) {
-                const channel = ChannelStore.getChannel(userChannelId);
-                const voiceStates = VoiceStateStore.getVoiceStatesForChannel(userChannelId);
-                const memberCount = voiceStates ? Object.keys(voiceStates).length : null;
-                if (channel.type === 1 || PermissionStore.can(CONNECT, channel)) {
-                    if (channel.userLimit !== 0 && memberCount !== null && memberCount >= channel.userLimit && !PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel)) {
-                        showToast({
-                            text: "Channel is full",
-                            variant: "critical"
-                        });
-                        return;
-                    }
-                    ChannelActions.selectVoiceChannel(userChannelId);
-                    showToast({
-                        text: "Followed user into a new voice channel",
-                        variant: "success"
-                    });
-                } else {
-                    showToast({
-                        text: "Insufficient permissions to enter in the voice channel",
-                        variant: "critical"
-                    });
-                }
-            } else {
-                showToast({
-                    text: "You are already in the same channel",
-                    variant: "critical"
-                });
-            }
-        } else if (myChanId) {
-            // if not in a voice channel and the setting is on disconnect
-            if (settings.store.followLeave) {
-                ChannelActions.disconnect();
-                showToast({
-                    text: "Followed user left, disconnected",
-                    variant: "success"
-                });
-            } else {
-                showToast({
-                    text: "Followed user left, but not following disconnect",
-                    variant: "critical"
-                });
-            }
-        } else {
+    if (!settings.store.followUserId) return;
+
+    const myChanId = SelectedChannelStore.getVoiceChannelId();
+    if (userChannelId) {
+        if (userChannelId === myChanId) {
             showToast({
-                text: "Followed user is not in a voice channel",
+                text: "You are already in the same channel",
                 variant: "critical"
             });
+            return;
         }
+
+        // join when not already in the same channel
+        const channel = ChannelStore.getChannel(userChannelId);
+        const voiceStates = VoiceStateStore.getVoiceStatesForChannel(userChannelId);
+        const memberCount = voiceStates ? Object.keys(voiceStates).length : null;
+        if (channel.type !== ChannelType.DM && !PermissionStore.can(CONNECT, channel)) {
+            showToast({
+                text: "Insufficient permissions to enter in the voice channel",
+                variant: "critical"
+            });
+            return;
+        }
+
+        if (channel.userLimit !== 0 && memberCount !== null && memberCount >= channel.userLimit && !PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel)) {
+            showToast({
+                text: "Channel is full",
+                variant: "critical"
+            });
+            return;
+        }
+
+        ChannelActions.selectVoiceChannel(userChannelId);
+        showToast({
+            text: "Followed user into a new voice channel",
+            variant: "success"
+        });
+        return;
     }
+
+    if (myChanId) {
+        if (!settings.store.followLeave) {
+            showToast({
+                text: "Followed user left, but not following disconnect",
+                variant: "critical"
+            });
+            return;
+        }
+
+        // if not in a voice channel and the setting is on disconnect
+        ChannelActions.disconnect();
+        showToast({
+            text: "Followed user left, disconnected",
+            variant: "success"
+        });
+        return;
+    }
+
+    showToast({
+        text: "Followed user is not in a voice channel",
+        variant: "critical"
+    });
 }
 
 function toggleFollow(userId: string) {
@@ -308,50 +317,47 @@ export default definePlugin({
 
     flux: {
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: VoiceState[]; }) {
-            if (settings.store.onlyManualTrigger || !settings.store.followUserId) {
-                return;
-            }
+            if (settings.store.onlyManualTrigger || !settings.store.followUserId) return;
+
             for (const { userId, channelId, oldChannelId } of voiceStates) {
-                if (channelId !== oldChannelId) {
-                    const isMe = userId === UserStore.getCurrentUser().id;
-                    // move back if the setting is on and you were moved
-                    if (settings.store.autoMoveBack && isMe && channelId && oldChannelId) {
-                        triggerFollow();
-                        continue;
-                    }
+                if (channelId === oldChannelId) continue;
 
-                    // rejoin if the setting is on and you disconnected yourself
-                    if (settings.store.autoRejoin && isMe && !channelId && oldChannelId) {
-                        triggerFollow();
-                        continue;
-                    }
+                const isMe = userId === UserStore.getCurrentUser().id;
+                // move back if the setting is on and you were moved
+                if (settings.store.autoMoveBack && isMe && channelId && oldChannelId) {
+                    triggerFollow();
+                    continue;
+                }
 
-                    // if you're not in the channel of the followed user and it is no longer full, join
-                    if (settings.store.channelFull && !isMe && !channelId && oldChannelId && oldChannelId !== SelectedChannelStore.getVoiceChannelId()) {
-                        const channel = ChannelStore.getChannel(oldChannelId);
-                        const channelVoiceStates = VoiceStateStore.getVoiceStatesForChannel(oldChannelId);
-                        const memberCount = channelVoiceStates ? Object.keys(channelVoiceStates).length : null;
-                        if (channel.userLimit !== 0 && memberCount !== null && memberCount === (channel.userLimit - 1) && !PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel)) {
-                            const users = Object.values(channelVoiceStates).map(x => x.userId);
-                            if (users.includes(settings.store.followUserId)) {
-                                triggerFollow(oldChannelId);
-                                continue;
-                            }
+                // rejoin if the setting is on and you disconnected yourself
+                if (settings.store.autoRejoin && isMe && !channelId && oldChannelId) {
+                    triggerFollow();
+                    continue;
+                }
+
+                // if you're not in the channel of the followed user and it is no longer full, join
+                if (settings.store.channelFull && !isMe && !channelId && oldChannelId && oldChannelId !== SelectedChannelStore.getVoiceChannelId()) {
+                    const channel = ChannelStore.getChannel(oldChannelId);
+                    const channelVoiceStates = VoiceStateStore.getVoiceStatesForChannel(oldChannelId);
+                    const memberCount = channelVoiceStates ? Object.keys(channelVoiceStates).length : null;
+                    if (channel.userLimit !== 0 && memberCount !== null && memberCount === (channel.userLimit - 1) && !PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel)) {
+                        const users = Object.values(channelVoiceStates).map(x => x.userId);
+                        if (users.includes(settings.store.followUserId)) {
+                            triggerFollow(oldChannelId);
+                            continue;
                         }
                     }
+                }
 
-                    const isFollowed = settings.store.followUserId === userId;
-                    if (!isFollowed) {
-                        continue;
-                    }
+                const isFollowed = settings.store.followUserId === userId;
+                if (!isFollowed) continue;
 
-                    if (channelId) {
-                        // move or join new channel -> also join
-                        triggerFollow(channelId);
-                    } else if (oldChannelId) {
-                        // leave -> disconnect
-                        triggerFollow(null);
-                    }
+                if (channelId) {
+                    // move or join new channel -> also join
+                    triggerFollow(channelId);
+                } else if (oldChannelId) {
+                    // leave -> disconnect
+                    triggerFollow(null);
                 }
             }
         },
