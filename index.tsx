@@ -282,7 +282,13 @@ const UserContext: NavContextMenuPatchCallback = (children, { user }: UserContex
 export default definePlugin({
     name: "FollowUser",
     description: "Adds a follow option in the user context menu to always be in the same VC as them",
-    authors: [Devs.D3SOX],
+    authors: [
+        Devs.D3SOX,
+        {
+            name: "benjas333",
+            id: 456577284464443394n,
+        },
+    ],
 
     settings,
 
