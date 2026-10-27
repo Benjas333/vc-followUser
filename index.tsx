@@ -359,11 +359,14 @@ export default definePlugin({
 
         return <>
             {followUserId && <HeaderBarIcon
-                tooltip={`Following ${followUsername} (click to trigger manually, right-click to unfollow)`}
+                tooltip={`Following ${followUsername} (click to trigger manually, shift+click to unfollow)`}
                 icon={UnfollowIcon}
-                onClick={() => triggerFollow()}
-                onContextMenu={() => {
-                    settings.store.followUserId = "";
+                onClick={(e: MouseEvent) => {
+                    if (e.shiftKey) {
+                        settings.store.followUserId = "";
+                    } else {
+                        triggerFollow();
+                    }
                 }}
             />}
         </>;
