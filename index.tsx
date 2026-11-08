@@ -30,7 +30,7 @@ import { type PropsWithChildren, type SVGProps } from "react";
 
 async function sleep(ms: number): Promise<void> {
     return new Promise(
-        (resolve) => setTimeout(resolve, ms));
+        resolve => setTimeout(resolve, ms));
 }
 
 const HeaderBarIcon = findComponentByCodeLazy(".HEADER_BAR_BADGE_BOTTOM,", 'position:"bottom"');
@@ -202,7 +202,7 @@ function getChannelId(userId: string) {
 
 async function triggerFollow(userChannelId: string | null = getChannelId(settings.store.followUserId)) {
     if (!settings.store.followUserId) return;
-    
+
     await sleep(settings.store.delay);
 
     const myChanId = SelectedChannelStore.getVoiceChannelId();
