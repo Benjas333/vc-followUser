@@ -27,6 +27,12 @@ import {
 } from "@webpack/common";
 import { type PropsWithChildren, type SVGProps } from "react";
 
+
+async function sleep(ms: number): Promise<void> {
+    return new Promise(
+        (resolve) => setTimeout(resolve, ms));
+}
+
 const HeaderBarIcon = findComponentByCodeLazy(".HEADER_BAR_BADGE_BOTTOM,", 'position:"bottom"');
 
 interface BaseIconProps extends IconProps {
@@ -149,6 +155,12 @@ export const settings = definePluginSettings({
         description: "Attempt to move you to the channel when is not full anymore",
         restartNeeded: false,
         default: true,
+    },
+    delay: {
+        type: OptionType.NUMBER,
+        description: "How long to wait before joining the voice channel, in miliseconds",
+        restartNeeded: false,
+        default: 0,
     }
 });
 
@@ -188,8 +200,10 @@ function getChannelId(userId: string) {
     return null;
 }
 
-function triggerFollow(userChannelId: string | null = getChannelId(settings.store.followUserId)) {
+async function triggerFollow(userChannelId: string | null = getChannelId(settings.store.followUserId)) {
     if (!settings.store.followUserId) return;
+    
+    await sleep(settings.store.delay);
 
     const myChanId = SelectedChannelStore.getVoiceChannelId();
     if (userChannelId) {
@@ -259,7 +273,7 @@ function toggleFollow(userId: string) {
     } else {
         settings.store.followUserId = userId;
         if (settings.store.executeOnFollow) {
-            triggerFollow();
+            triggerFollow().catch(e => console.error(e));
         }
     }
 }
@@ -297,6 +311,10 @@ export default definePlugin({
             name: "benjas333",
             id: 456577284464443394n,
         },
+        {
+            name: "2p2i5",
+            id: 1003897681225207890n,
+        },
     ],
 
     settings,
@@ -325,13 +343,13 @@ export default definePlugin({
                 const isMe = userId === UserStore.getCurrentUser().id;
                 // move back if the setting is on and you were moved
                 if (settings.store.autoMoveBack && isMe && channelId && oldChannelId) {
-                    triggerFollow();
+                    triggerFollow().catch(e => console.error(e));
                     continue;
                 }
 
                 // rejoin if the setting is on and you disconnected yourself
                 if (settings.store.autoRejoin && isMe && !channelId && oldChannelId) {
-                    triggerFollow();
+                    triggerFollow().catch(e => console.error(e));
                     continue;
                 }
 
@@ -343,7 +361,7 @@ export default definePlugin({
                     if (channel.userLimit !== 0 && memberCount !== null && memberCount === (channel.userLimit - 1) && !PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel)) {
                         const users = Object.values(channelVoiceStates).map(x => x.userId);
                         if (users.includes(settings.store.followUserId)) {
-                            triggerFollow(oldChannelId);
+                            triggerFollow(oldChannelId).catch(e => console.error(e));
                             continue;
                         }
                     }
@@ -354,10 +372,10 @@ export default definePlugin({
 
                 if (channelId) {
                     // move or join new channel -> also join
-                    triggerFollow(channelId);
+                    triggerFollow(channelId).catch(e => console.error(e));
                 } else if (oldChannelId) {
                     // leave -> disconnect
-                    triggerFollow(null);
+                    triggerFollow(null).catch(e => console.error(e));
                 }
             }
         },
@@ -389,7 +407,7 @@ export default definePlugin({
                     if (e.shiftKey) {
                         settings.store.followUserId = "";
                     } else {
-                        triggerFollow();
+                        triggerFollow().catch(e => console.error(e));
                     }
                 }}
             />}
